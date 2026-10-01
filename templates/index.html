@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AlgoSmart | مقایسه هوشمند</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <!-- اضافه کردن کتابخانه رسم نمودار -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+<div class="glass-container">
+    <header>
+        <h1>AlgoSmart</h1>
+        <p>موتور هوشمند مقایسه و تشخیص الگوریتم‌ها</p>
+    </header>
+
+    <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('nameTab', this)">مقایسه با نام الگوریتم</button>
+        <button class="tab-btn" onclick="switchTab('codeTab', this)">تحلیل و تشخیص کد</button>
+    </div>
+
+    <!-- بخش ۱: مقایسه با نام -->
+    <div id="nameTab" class="section active">
+        <div class="inputs-row">
+            <div class="box">
+                <label>الگوریتم اول:</label>
+                <select id="name1">
+                    <option value="" disabled selected>انتخاب کنید...</option>
+                    <option value="bubble sort">مرتب‌سازی حبابی (Bubble Sort)</option>
+                    <option value="quick sort">مرتب‌‌سازی سریع (Quick Sort)</option>
+                    <option value="merge sort">مرتب‌سازی ادغامی (Merge Sort)</option>
+                    <option value="binary search">جستجوی دودویی (Binary Search)</option>
+                    <option value="linear search">جستجوی خطی (Linear Search)</option>
+                </select>
+            </div>
+            <div class="box">
+                <label>الگوریتم دوم:</label>
+                <select id="name2">
+                    <option value="" disabled selected>انتخاب کنید...</option>
+                    <option value="bubble sort">مرتب‌سازی حبابی (Bubble Sort)</option>
+                    <option value="quick sort">مرتب‌سازی سریع (Quick Sort)</option>
+                    <option value="merge sort">مرتب‌سازی ادغامی (Merge Sort)</option>
+                    <option value="binary search">جستجوی دودویی (Binary Search)</option>
+                    <option value="linear search">جستجوی خطی (Linear Search)</option>
+                </select>
+            </div>
+        </div>
+        <button class="action-btn" id="btnName" onclick="compareByName()">شروع مقایسه</button>
+        
+        <div id="nameResult" class="result-box">
+            <div id="resultText"></div>
+            <!-- کانتینر نمودار -->
+            <div class="chart-wrapper" id="chartBox" style="display: none;">
+                <canvas id="complexityChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- بخش ۲: مقایسه با کد -->
+    <div id="codeTab" class="section">
+        <div class="inputs-row">
+            <div class="box">
+                <label>کد پایتون الگوریتم A:</label>
+                <textarea id="code1" placeholder="def solve(arr):&#10;    pass"></textarea>
+            </div>
+            <div class="box">
+                <label>کد پایتون الگوریتم B:</label>
+                <textarea id="code2" placeholder="def solve(arr):&#10;    pass"></textarea>
+            </div>
+        </div>
+        <button class="action-btn" id="btnCode" onclick="compareByCode()">پردازش با هوش مصنوعی</button>
+        <div id="codeResult" class="result-box"></div>
+    </div>
+</div>
+
+<div id="customToast" class="toast-box"></div>
+
+<script>
+    let myChart = null;
+
+    function showError(message) {
+        const toast = document.getElementById('customToast');
+        toast.innerText = '⚠ ' + message;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 3500);
+    }
+
+    function switchTab(tabId, btn) {
+        document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.result-box').forEach(b => b.classList.remove('show-result'));
+        document.getElementById(tabId).classList.add('active');
+        btn.classList.add('active');
+    }
+
+    async function compareByName() {
+        const algo1 = document.getElementById('name1').value;
+        const algo2 = document.getElementById('name2').value;
+        const resBox = document.getElementById('nameResult');
+        const textBox = document.getElementById('resultText');
+        const chartBox = document.getElementById('chartBox');
+        const btn = document.getElementById('btnName');
+        
+        if(!algo1 || !algo2) return showError("لطفاً هر دو الگوریتم را انتخاب کنید!");
+
+        btn.classList.add('loading');
+        btn.innerText = 'در حال تحلیل و رسم نمودار...';
+        resBox.classList.remove('show-result');
+        chartBox.style.display = 'none';
+
+        try {
+            const res = await fetch('/api/compare_names', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({algo1, algo2})
+            }).then(r => r.json());
+
+            setTimeout(() => {
+                const renderData = (data, title) => {
+                    if(data.error) return `<p>🔴 <span class="highlight">${title}:</span> <span style="color:red">یافت نشد!</span></p>`;
+                    return `
+                        <p>🔵 <span class="highlight">${data.name}:</span> 
+                           <span class="badge">زمان: ${data.time}</span> 
+                           <span class="badge">حافظه: ${data.space}</span>
+                        </p>
+                        <p style="color: #a0a5b1; font-size:0.9rem; margin-right: 25px;">${data.desc}</p>
+                    `;
+                };
+
+                // ساختن متن نتیجه‌گیری نهایی
+                let summaryText = "";
+                if (!res.algo1.error && !res.algo2.error && res.verdict) {
+                    
+                    // بررسی برنده زمان
+                    let timeWinner = "";
+                    if (res.verdict.time === 'tie') {
+                        timeWinner = "هر دو الگوریتم برابر هستند.";
+                    } else if (res.verdict.time === 'algo1') {
+                        timeWinner = `الگوریتم <b style="color:var(--primary)">${res.algo1.name}</b> سریع‌تر است.`;
+                    } else {
+                        timeWinner = `الگوریتم <b style="color:var(--primary)">${res.algo2.name}</b> سریع‌تر است.`;
+                    }
+
+                    // بررسی برنده حافظه
+                    let spaceWinner = "";
+                    if (res.verdict.space === 'tie') {
+                        spaceWinner = "هر دو الگوریتم برابر هستند.";
+                    } else if (res.verdict.space === 'algo1') {
+                        spaceWinner = `الگوریتم <b style="color:var(--success)">${res.algo1.name}</b> بهینه‌تر است.`;
+                    } else {
+                        spaceWinner = `الگوریتم <b style="color:var(--success)">${res.algo2.name}</b> بهینه‌تر است.`;
+                    }
+
+                    summaryText = `
+                        <div style="background: rgba(0, 0, 0, 0.4); padding: 20px; border-radius: 12px; margin-top: 20px; border: 1px solid rgba(255,255,255,0.1);">
+                            <h3 style="margin-top: 0; color: #fff; text-align: center;">🏆 نتیجه‌گیری نهایی</h3>
+                            <p style="font-size: 1.1rem;">⏱️ <b>از نظر سرعت (زمان اجرا):</b> ${timeWinner}</p>
+                            <p style="font-size: 1.1rem;">💾 <b>از نظر مصرف حافظه:</b> ${spaceWinner}</p>
+                        </div>
+                    `;
+                }
+
+                textBox.innerHTML = `
+                    ${renderData(res.algo1, algo1)}
+                    <hr style="border-color: rgba(255,255,255,0.05); margin: 15px 0;">
+                    ${renderData(res.algo2, algo2)}
+                    ${summaryText}
+                `;
+                
+                if(!res.algo1.error && !res.algo2.error) {
+                    chartBox.style.display = 'block';
+                    drawChart(res.algo1.name, res.algo2.name, res.algo1.time, res.algo2.time);
+                }
+                
+                btn.classList.remove('loading');
+                btn.innerText = 'شروع مقایسه';
+                resBox.classList.add('show-result');
+            }, 800);
+
+        } catch (error) {
+            btn.classList.remove('loading');
+            btn.innerText = 'شروع مقایسه';
+            showError("خطا در ارتباط با سرور.");
+        }
+    }
+
+    function getMathData(complexity, sizes) {
+        return sizes.map(n => {
+            if(complexity === "O(1)") return 5;
+            if(complexity === "O(log n)") return Math.log2(n) * 5;
+            if(complexity === "O(n)") return n;
+            if(complexity === "O(n log n)") return n * Math.log2(n);
+            if(complexity === "O(n^2)") return (n * n) / 40;
+            return n;
+        });
+    }
+
+    function drawChart(name1, name2, time1, time2) {
+        const ctx = document.getElementById('complexityChart').getContext('2d');
+        const sizes = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+        
+        if (myChart) myChart.destroy();
+
+        myChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: sizes.map(n => `N=${n}`),
+                datasets: [
+                    {
+                        label: name1 + ` (${time1})`,
+                        data: getMathData(time1, sizes),
+                        borderColor: '#00d2ff',
+                        backgroundColor: 'rgba(0, 210, 255, 0.1)',
+                        borderWidth: 3,
+                        tension: 0.4,
+                        fill: true
+                    },
+                    {
+                        label: name2 + ` (${time2})`,
+                        data: getMathData(time2, sizes),
+                        borderColor: '#00ff88',
+                        backgroundColor: 'rgba(0, 255, 136, 0.1)',
+                        borderWidth: 3,
+                        tension: 0.4,
+                        fill: true
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                color: '#fff',
+                scales: {
+                    x: { ticks: { color: '#aaa' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                    y: { 
+                        ticks: { color: '#aaa', display: false }, 
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        title: { display: true, text: 'زمان اجرا (عملیات)', color: '#fff' }
+                    }
+                },
+                plugins: {
+                    legend: { labels: { color: '#fff', font: { family: 'Tahoma' } } }
+                }
+            }
+        });
+    }
+
+async function compareByCode() {
+        const code1 = document.getElementById('code1').value;
+        const code2 = document.getElementById('code2').value;
+        const resBox = document.getElementById('codeResult');
+        const btn = document.getElementById('btnCode');
+        
+        if(!code1 || !code2) return showError("لطفاً کدهای هر دو بخش را بنویسید!");
+
+        btn.classList.add('loading');
+        btn.innerText = 'Analyzing codes...';
+        resBox.classList.remove('show-result');
+
+        try {
+            const res = await fetch('/api/compare_codes', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({code1, code2})
+            }).then(r => r.json());
+
+            setTimeout(() => {
+                if(res.success) {
+                    const formattedText = res.ai_report.replace(/\n/g, '<br>');
+                    
+                    resBox.innerHTML = `
+                        <h3 style="color: #fff;">📊 Analysis Result:</h3>
+                        <div style="background: rgba(0, 0, 0, 0.4); padding: 20px; border-radius: 12px; margin-top: 15px; border: 1px solid rgba(255,255,255,0.1); line-height: 1.8; direction: ltr; text-align: left;">
+                            ${formattedText}
+                        </div>
+                        <button onclick="resetCodeFields()" style="margin-top: 15px; width: 100%; background: rgba(255, 75, 75, 0.2); border: 1px solid #ff4b4b; color: #ff4b4b; padding: 10px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.3s;">
+                            🔄 پاک کردن فرم و شروع مجدد (Reset)
+                        </button>
+                    `;
+                } else {
+                    resBox.innerHTML = `<p style="color: var(--danger)">Error: ${res.error}</p>`;
+                }
+                
+                btn.classList.remove('loading');
+                btn.innerText = 'پردازش با هوش مصنوعی';
+                resBox.classList.add('show-result');
+            }, 800);
+        } catch (error) {
+            btn.classList.remove('loading');
+            btn.innerText = 'پردازش با هوش مصنوعی';
+            showError("خطا در ارتباط با سرور.");
+        }
+    }
+
+    // تابع جدید برای ریست کردن کادرها و نتایج
+    function resetCodeFields() {
+        document.getElementById('code1').value = '';
+        document.getElementById('code2').value = '';
+        const resBox = document.getElementById('codeResult');
+        resBox.classList.remove('show-result');
+        resBox.innerHTML = '';
+    }
+</script>
+</body>
+</html>
